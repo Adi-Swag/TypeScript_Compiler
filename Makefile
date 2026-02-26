@@ -21,8 +21,8 @@ typescript_parser.tab.c typescript_parser.tab.h: typescript_parser.y
 	bison -d typescript_parser.y
 
 # Step 2: Run flex to generate lexer C code
-lex.yy.c: typescript_lexer_p2.l typescript_parser.tab.h
-	flex typescript_lexer_p2.l
+lex.yy.c: typescript_lexer_v2.l typescript_parser.tab.h
+	flex typescript_lexer_v2.l
 
 # Step 3: Compile everything into one executable
 $(TARGET): typescript_parser.tab.c lex.yy.c
