@@ -1,0 +1,47 @@
+# ============================================================
+# Makefile_tac — Three Address Code Generator
+# CS F365 - Compiler Construction - Phase 2
+#
+# Usage:
+#   make -f Makefile_tac            — build
+#   make -f Makefile_tac run_valid  — test valid input
+#   make -f Makefile_tac run_error  — test error input
+#   make -f Makefile_tac clean      — remove generated files
+# ============================================================
+
+CC      = gcc
+CFLAGS  = -Wall -g
+
+TARGET  = ts_tac
+
+all: $(TARGET)
+
+# Step 1: Bison generates TAC parser + header
+typescript_tac.tab.c typescript_tac.tab.h: typescript_tac.y
+	bison -d typescript_tac.y
+
+# Step 2: Flex generates lexer using TAC-specific lexer file
+lex.yy.c: typescript_lexer_tac.l typescript_tac.tab.h
+	flex -o lex.yy.c typescript_lexer_tac.l
+
+# Step 3: Compile everything
+$(TARGET): typescript_tac.tab.c lex.yy.c
+	$(CC) $(CFLAGS) typescript_tac.tab.c lex.yy.c -o $(TARGET) -lfl
+
+# ── Run targets ─────────────────────────────────────────────
+run_valid: $(TARGET)
+	@echo "============================================================="
+	@echo "  TAC — Valid Input"
+	@echo "============================================================="
+	./$(TARGET) valid_input.ts
+
+run_error: $(TARGET)
+	@echo "============================================================="
+	@echo "  TAC — Error Input"
+	@echo "============================================================="
+	./$(TARGET) error_input.ts
+
+# ── Clean ────────────────────────────────────────────────────
+clean:
+	rm -f typescript_tac.tab.c typescript_tac.tab.h \
+	      lex.yy.c $(TARGET)
