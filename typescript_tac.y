@@ -91,7 +91,7 @@ void emit_label(const char *label) {
 %token LPAREN RPAREN LBRACE RBRACE COLON SEMICOLON
 
 /* ── Types for non-terminals that return values ──────────────── */
-%type <sval> Expr Primary
+%type <sval> Expr Primary IfHeader ElseJump WhileStart WhileCond
 
 /* ── Precedence & Associativity (lowest → highest) ───────────── */
 %left  OP_OR
@@ -115,7 +115,7 @@ Program
         {
             printf("\n");
             printf("=============================================================\n");
-            printf("  TAC generation complete. No syntax errors.\n");
+            printf("  TAC generation complete. \n");
             printf("=============================================================\n");
         }
     ;
@@ -180,107 +180,104 @@ AssignStmt
 /* ── If Statement ────────────────────────────────────────────── */
 /*
  * TAC pattern for if (Expr) Block:
- *
  *     <Expr TAC>
- *     if_false <expr_temp> goto L_end
+ *     if_false t goto L_end
  *     <Block TAC>
  *  L_end:
  *
  * TAC pattern for if (Expr) Block else Block:
- *
  *     <Expr TAC>
- *     if_false <expr_temp> goto L_else
+ *     if_false t goto L_else
  *     <Block TAC>
  *     goto L_end
  *  L_else:
- *     <else Block TAC>
+ *     <else TAC>
  *  L_end:
  *
- * We use marker mid-rules to generate and emit labels at the
- * right points in the token stream.
+ * IfHeader is a typed non-terminal that emits the conditional
+ * jump and returns the false-label as its value.
  */
 
-/* Marker: emits the if_false jump after condition is parsed */
 IfHeader
     : KW_IF LPAREN Expr RPAREN
         {
-            char *l = new_label();
-            emit("if_false %s goto %s", $3, l);
+            char *l_false = new_label();
+            emit("if_false %s goto %s", $3, l_false);
             free($3);
-            $<sval>$ = l;   /* pass label up */
+            $$ = l_false;
         }
     ;
 
 IfStmt
     : IfHeader Block
         {
-            /* if only — emit end label */
+            /* if only */
             emit_label($1);
             free($1);
         }
-    | IfHeader Block
+    | IfHeader Block ElseJump KW_ELSE Block
         {
-            /* before else: emit goto L_end, then L_else */
+            /*
+             * $1 = L_else (from IfHeader)
+             * $3 = L_end  (from ElseJump mid-rule)
+             */
+            emit_label($3);
+            free($1); free($3);
+        }
+    | IfHeader Block ElseJump KW_ELSE IfStmt
+        {
+            emit_label($3);
+            free($1); free($3);
+        }
+    ;
+
+/* ElseJump: emits "goto L_end" and "L_else:" between if-body and else */
+ElseJump
+    : /* empty */
+        {
             char *l_end = new_label();
+            /* $0 is IfHeader's label (L_else) — use $<sval>0 */
             emit("goto %s", l_end);
-            emit_label($1);          /* L_else: */
-            free($1);
-            $<sval>$ = l_end;
-        }
-      KW_ELSE Block
-        {
-            emit_label($<sval>3);    /* L_end: */
-            free($<sval>3);
-        }
-    | IfHeader Block
-        {
-            char *l_end = new_label();
-            emit("goto %s", l_end);
-            emit_label($1);
-            free($1);
-            $<sval>$ = l_end;
-        }
-      KW_ELSE IfStmt
-        {
-            emit_label($<sval>3);
-            free($<sval>3);
+            emit_label($<sval>0);   /* L_else: */
+            $$ = l_end;
         }
     ;
 
 /* ── While Statement ─────────────────────────────────────────── */
 /*
  * TAC pattern:
- *
  *  L_start:
  *     <Expr TAC>
- *     if_false <expr_temp> goto L_end
+ *     if_false t goto L_end
  *     <Block TAC>
  *     goto L_start
  *  L_end:
  */
 
-WhileStmt
+WhileStart
     : KW_WHILE
         {
-            /* Emit L_start before condition */
             char *l_start = new_label();
             emit_label(l_start);
-            $<sval>$ = l_start;
+            $$ = l_start;
         }
-      LPAREN Expr RPAREN
+    ;
+
+WhileStmt
+    : WhileStart LPAREN Expr WhileCond RPAREN Block
         {
-            /* Emit conditional jump after condition */
+            emit("goto %s", $1);     /* loop back to L_start */
+            emit_label($4);          /* L_end: */
+            free($1); free($3); free($4);
+        }
+    ;
+
+WhileCond
+    : /* empty, fires after Expr is reduced */
+        {
             char *l_end = new_label();
-            emit("if_false %s goto %s", $4, l_end);
-            free($4);
-            $<sval>$ = l_end;
-        }
-      Block
-        {
-            emit("goto %s", $<sval>2);   /* loop back */
-            emit_label($<sval>6);        /* L_end: */
-            free($<sval>2);
-            free($<sval>6);
+            emit("if_false %s goto %s", $<sval>0, l_end);
+            $$ = l_end;
         }
     ;
 
